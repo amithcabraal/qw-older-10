@@ -23,7 +23,7 @@ const GameContext = createContext<GameContextType | undefined>(undefined);
 const ACTOR_POOL_SIZE = 100;
 const PAGES_TO_FETCH = 10;
 const MIN_VALID_ACTORS = 10;
-const MAX_AGE_GAP = 25;
+const MAX_AGE_GAP = 12;
 const REVEAL_DURATION = 2000;
 const GAME_OVER_DELAY = 1500;
 
