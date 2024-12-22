@@ -12,12 +12,28 @@ const api = axios.create({
   },
 });
 
-const MAX_PAGES = 50;
+const MAX_PAGES = 20; // Reduced to focus on more prominent actors
+const MIN_POPULARITY = 15; // Increased minimum popularity threshold
+const MIN_KNOWN_FOR_COUNT = 3; // Minimum number of known movies
 
 export const fetchPopularActors = async (page = 1) => {
   try {
-    const { data } = await api.get('/person/popular', { params: { page } });
-    return data.results.filter((actor: any) => actor.profile_path && actor.popularity > 2);
+    const { data } = await api.get('/person/popular', { 
+      params: { 
+        page,
+        language: 'en-US', // Focus on English-language content
+      }
+    });
+    
+    // Filter for more prominent actors
+    return data.results.filter((actor: any) => 
+      actor.profile_path && // Must have a profile image
+      actor.popularity > MIN_POPULARITY && // Must be relatively popular
+      actor.known_for?.length >= MIN_KNOWN_FOR_COUNT && // Must be known for multiple movies
+      actor.known_for.some((work: any) => 
+        work.original_language === 'en' // Must have worked in English-language productions
+      )
+    );
   } catch (error) {
     throw new Error('Failed to fetch popular actors');
   }
@@ -40,9 +56,20 @@ export const fetchActorPool = async (pageCount: number = 3): Promise<any[]> => {
 
 const fetchActorMovies = async (id: number): Promise<Movie[]> => {
   try {
-    const { data } = await api.get(`/person/${id}/movie_credits`);
+    const { data } = await api.get(`/person/${id}/movie_credits`, {
+      params: {
+        language: 'en-US',
+      }
+    });
+    
+    // Filter for significant movie roles
     return data.cast
-      .filter((movie: any) => movie.release_date && movie.character)
+      .filter((movie: any) => 
+        movie.release_date && 
+        movie.character &&
+        movie.popularity > 10 && // Focus on more popular movies
+        movie.vote_count > 100 // Ensure the movie has significant viewership
+      )
       .sort((a: any, b: any) => new Date(b.release_date).getTime() - new Date(a.release_date).getTime())
       .slice(0, 5)
       .map((movie: any) => ({
@@ -59,21 +86,31 @@ const fetchActorMovies = async (id: number): Promise<Movie[]> => {
 export const fetchActorDetails = async (id: number): Promise<Actor | null> => {
   try {
     const [{ data }, movies] = await Promise.all([
-      api.get(`/person/${id}`),
+      api.get(`/person/${id}`, {
+        params: {
+          language: 'en-US',
+        }
+      }),
       fetchActorMovies(id),
     ]);
     
-    if (!data.birthday || !data.profile_path) return null;
+    // Additional filters for Hollywood actors
+    if (!data.birthday || 
+        !data.profile_path || 
+        !data.place_of_birth || // Must have place of birth info
+        movies.length < 2 || // Must have at least 2 significant movies
+        data.popularity < MIN_POPULARITY) { // Maintain minimum popularity threshold
+      return null;
+    }
 
     const birthDate = parse(data.birthday, 'yyyy-MM-dd', new Date());
     const deathDate = data.deathday ? parse(data.deathday, 'yyyy-MM-dd', new Date()) : null;
     
-    // Calculate age at death if applicable, otherwise current age
     const age = deathDate 
       ? differenceInYears(deathDate, birthDate)
       : differenceInYears(new Date(), birthDate);
 
-    if (age < 1 || !data.profile_path) return null;
+    if (age < 1) return null;
 
     return {
       id: data.id,
